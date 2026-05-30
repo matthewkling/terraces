@@ -1,0 +1,27 @@
+Package: terraces
+Type: Package
+Title: Conservation of Empirical Statistics in Raster Disaggregation
+Version: 0.1.0
+Authors@R: 
+    person("Matthew", "Kling", role = c("aut", "cre", "cph"),
+           email = "mattkling@berkeley.edu")
+Description: Disaggregate raster data to finer resolutions such that all
+    empirical statistics of the coarse raster (mean, variance, quantiles,
+    full distribution) are preserved exactly through aggregation. Removes
+    the regression-to-the-mean bias of standard bilinear and cubic
+    interpolation by prefiltering the coarse raster with a precomputed
+    inverse kernel.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Imports:
+    terra (>= 1.7-0)
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+URL: https://github.com/matthewkling/terraces
+BugReports: https://github.com/matthewkling/terraces/issues
+Config/roxygen2/version: 8.0.0
