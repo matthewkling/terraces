@@ -4,7 +4,13 @@
 \alias{ces_apply_kernel}
 \title{Apply a precomputed inverse kernel to perform CES disaggregation}
 \usage{
-ces_apply_kernel(coarse, K_inv, fact, method)
+ces_apply_kernel(
+  coarse,
+  K_inv,
+  fact,
+  method,
+  na_fill = c("auto", "reflect", "fill")
+)
 }
 \arguments{
 \item{coarse}{SpatRaster.}
@@ -14,6 +20,17 @@ ces_apply_kernel(coarse, K_inv, fact, method)
 \item{fact}{Integer disagg factor; should match the kernel.}
 
 \item{method}{Character, the prefilter method the kernel was built for.}
+
+\item{na_fill}{Character, boundary/NA handling mode. One of:
+* `"auto"` (default): use `"reflect"` if `coarse` has no NA values,
+  otherwise use `"fill"`.
+* `"reflect"`: use terra's reflective extension at boundaries.
+  Fastest and most accurate for round-trip preservation, but
+  propagates NAs (any NA in the coarse raster yields an
+  `(2*radius+1)`-cell wide NA region in the fine output).
+* `"fill"`: pad the coarse raster with nearest-valid values before
+  the focal pass, then crop back. Robust to NAs, but slightly
+  degrades round-trip preservation in the boundary band.}
 }
 \value{
 Fine SpatRaster.

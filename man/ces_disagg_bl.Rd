@@ -4,7 +4,13 @@
 \alias{ces_disagg_bl}
 \title{Bilinear disaggregation with conservation of empirical statistics}
 \usage{
-ces_disagg_bl(coarse, fact, radius = NULL, max_radius_frac = 1/3)
+ces_disagg_bl(
+  coarse,
+  fact,
+  radius = NULL,
+  max_radius_frac = 1/3,
+  na_fill = c("auto", "reflect", "fill")
+)
 }
 \arguments{
 \item{coarse}{SpatRaster. Multi-layer rasters are supported (the kernel
@@ -20,6 +26,10 @@ automatically reduced for small rasters; see `max_radius_frac`.}
 the coarse raster's smaller dimension. Defaults to `1/3` to keep the
 focal-boundary band (where reflective extension is approximate) from
 dominating the interior. Allowed range: (0, 0.5].}
+
+\item{na_fill}{Boundary/NA handling mode passed to [ces_apply_kernel()].
+`"auto"` (default) selects `"reflect"` for rasters with no NAs and
+`"fill"` for rasters with NAs.}
 }
 \value{
 Fine SpatRaster. Layer names preserved.

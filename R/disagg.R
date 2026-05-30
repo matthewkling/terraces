@@ -231,7 +231,7 @@ ces_apply_kernel <- function(coarse, K_inv, fact, method,
             stop("`max_radius_frac` must be in (0, 0.5]")
 }
 
-# Register the built-in bilinear method on package load
+# Register the built-in methods on package load
 .register_builtins <- function() {
       ces_register_method(
             name           = "bilinear",
@@ -240,6 +240,12 @@ ces_apply_kernel <- function(coarse, K_inv, fact, method,
             roundtrip_fn   = .roundtrip_bilinear,
             default_radius = .default_radius_bilinear,
             description    = "Bilinear with conservation of empirical statistics"
+      )
+      ces_register_method(
+            name        = "pycnophylactic",
+            type        = "iterative",
+            disagg_fn   = ces_disagg_pyc,
+            description = "Tobler's pycnophylactic interpolation (iterative)"
       )
 }
 

@@ -1,3 +1,4 @@
+library(testthat)
 library(terra)
 
 test_that("bilinear round-trip kernel sums to 1 across factors", {
@@ -111,6 +112,38 @@ test_that("too-small raster errors cleanly", {
 test_that("methods registry lists registered methods", {
       m <- ces_list_methods()
       expect_true("bilinear" %in% m$name)
+})
+
+test_that("ces_disagg_pyc preserves block means", {
+      set.seed(42)
+      n <- 30; fact <- 5
+      r <- rast(nrows = n, ncols = n, xmin = 0, xmax = 1, ymin = 0, ymax = 1)
+      xy <- xyFromCell(r, 1:ncell(r))
+      values(r) <- with(as.data.frame(xy),
+                        sin(6 * x) * cos(5 * y) + 0.5 * sin(8 * x * y))
+
+      fine <- ces_disagg_pyc(r, fact = fact, max_iter = 200, tol = 1e-5)
+      back <- aggregate(fine, fact = fact, fun = "mean")
+      err <- values(r) - values(back)
+      data_range <- diff(range(values(r)))
+      # Tobler preserves block means very precisely by construction (each
+      # iteration restores them exactly).
+      expect_lt(max(abs(err), na.rm = TRUE), 1e-3 * data_range)
+})
+
+test_that("pycnophylactic method is registered", {
+      m <- ces_list_methods()
+      expect_true("pycnophylactic" %in% m$name)
+      expect_true("iterative" %in% m$type)
+})
+
+test_that("ces_disagg dispatches to pycnophylactic correctly", {
+      set.seed(1)
+      r <- rast(nrows = 25, ncols = 25, vals = runif(625))
+      out_direct   <- ces_disagg_pyc(r, fact = 5, max_iter = 20, tol = 1e-3)
+      out_dispatch <- ces_disagg(r, fact = 5, method = "pycnophylactic",
+                                 max_iter = 20, tol = 1e-3)
+      expect_equal(values(out_direct), values(out_dispatch))
 })
 
 test_that("ces_register_method validates round-trip kernel", {
