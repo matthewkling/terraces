@@ -17,7 +17,7 @@
 #' mean at every iteration. The result is a Laplacian-smooth surface whose
 #' block means equal the input coarse data exactly.
 #'
-#' Compared to [ces_disagg_bl()]:
+#' Compared to [disagg_bl()]:
 #' \itemize{
 #'   \item Tobler produces smoother output (continuous gradients across
 #'     coarse cell boundaries; no bilinear faceting).
@@ -43,7 +43,7 @@
 #'   * `"multiplicative"`: scale within-block values. Strictly positive
 #'     data only; will warn and fall back to additive if any block mean
 #'     is non-positive.
-#' @param na_fill Character, NA handling. Same semantics as [ces_disagg_bl()];
+#' @param na_fill Character, NA handling. Same semantics as [disagg_bl()];
 #'   `"auto"` (default) uses `"fill"` when the coarse raster has NAs,
 #'   `"reflect"` otherwise.
 #' @param initial Character, choice of initial fine raster before iteration
@@ -63,14 +63,14 @@
 #' geographical regions. *J. Am. Stat. Assoc.* 74(367), 519-530.
 #'
 #' @export
-ces_disagg_pyc <- function(coarse, fact,
-                           max_iter = 100L,
-                           tol = 1e-4,
-                           smoother = c("laplacian_9", "laplacian_5"),
-                           variant = c("additive", "multiplicative"),
-                           initial = c("near", "bilinear"),
-                           na_fill = c("auto", "reflect", "fill"),
-                           verbose = FALSE) {
+disagg_pyc <- function(coarse, fact,
+                       max_iter = 100L,
+                       tol = 1e-4,
+                       smoother = c("laplacian_9", "laplacian_5"),
+                       variant = c("additive", "multiplicative"),
+                       initial = c("near", "bilinear"),
+                       na_fill = c("auto", "reflect", "fill"),
+                       verbose = FALSE) {
       smoother <- match.arg(smoother)
       variant  <- match.arg(variant)
       initial  <- match.arg(initial)
@@ -180,14 +180,4 @@ ces_disagg_pyc <- function(coarse, fact,
             stop("`max_iter` must be a positive integer")
       if (!is.numeric(tol) || length(tol) != 1L || tol <= 0)
             stop("`tol` must be a positive numeric scalar")
-}
-
-# Register on package load
-.register_pyc <- function() {
-      ces_register_method(
-            name        = "pycnophylactic",
-            type        = "iterative",
-            disagg_fn   = ces_disagg_pyc,
-            description = "Tobler's pycnophylactic interpolation (iterative)"
-      )
 }

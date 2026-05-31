@@ -4,22 +4,26 @@
 # (on the kernel's support window). Computed by direct linear-system solve;
 # cached in a session-level environment keyed on (method, fact, radius).
 
-.ces_cache <- new.env(parent = emptyenv())
+.kernel_cache <- new.env(parent = emptyenv())
 .cache_key <- function(method, fact, radius) {
       paste(method, fact, radius, sep = "/")
 }
+
+# Methods that have a prefilter (i.e., support kernel()/roundtrip_kernel()).
+# Pycnophylactic is iterative and is not in this list.
+.prefilter_methods <- c("bilinear")
 
 #' Compute the inverse kernel for a prefilter disaggregation method
 #'
 #' The inverse kernel is the focal filter applied to the coarse raster
 #' before standard interpolation; it predistorts the coarse data so that
 #' subsequent disagg produces a fine raster whose block means equal the
-#' inputs (i.e., conservation of empirical statistics at the coarse scale).
+#' input coarse values.
 #'
 #' Kernels depend only on the method and disagg factor (not the data) and
 #' are cached for the R session.
 #'
-#' @param method Character, must be a registered prefilter method.
+#' @param method Character, prefilter method name. Currently `"bilinear"`.
 #' @param fact Integer disagg factor.
 #' @param radius Integer half-width of the kernel. Larger = more accurate
 #'   at higher one-time cost. `NULL` uses a method-specific default.
@@ -29,29 +33,28 @@
 #'   `conv_max_err` (largest deviation of K * K_inv from the delta on
 #'   the interior; should be machine epsilon).
 #' @export
-ces_kernel <- function(method, fact, radius = NULL) {
-      m <- .get_method(method)
-      if (m$type != "prefilter") {
-            stop("Method '", method, "' is not a prefilter method; it has no ",
-                 "inverse kernel.")
+kernel <- function(method, fact, radius = NULL) {
+      if (!method %in% .prefilter_methods) {
+            stop("Method '", method, "' is not a prefilter method. ",
+                 "Prefilter methods: ", paste(.prefilter_methods, collapse = ", "), ".")
       }
       fact <- as.integer(fact)
-      if (is.null(radius)) radius <- m$default_radius(fact)
+      if (is.null(radius)) radius <- .default_radius(method, fact)
       radius <- as.integer(radius)
       if (radius < 1L) stop("radius must be at least 1")
 
       key <- .cache_key(method, fact, radius)
-      if (exists(key, envir = .ces_cache, inherits = FALSE)) {
-            return(get(key, envir = .ces_cache, inherits = FALSE))
+      if (exists(key, envir = .kernel_cache, inherits = FALSE)) {
+            return(get(key, envir = .kernel_cache, inherits = FALSE))
       }
 
-      K <- m$roundtrip(fact)
+      K <- roundtrip_kernel(method, fact)
       K_inv <- .compute_inverse(K, radius)
       attr(K_inv, "method") <- method
       attr(K_inv, "fact")   <- fact
       attr(K_inv, "radius") <- radius
 
-      assign(key, K_inv, envir = .ces_cache)
+      assign(key, K_inv, envir = .kernel_cache)
       K_inv
 }
 
@@ -111,7 +114,7 @@ ces_kernel <- function(method, fact, radius = NULL) {
 }
 
 # Internal: clear cache (for tests).
-.ces_clear_cache <- function() {
-      rm(list = ls(.ces_cache), envir = .ces_cache)
+.clear_kernel_cache <- function() {
+      rm(list = ls(.kernel_cache), envir = .kernel_cache)
       invisible(NULL)
 }

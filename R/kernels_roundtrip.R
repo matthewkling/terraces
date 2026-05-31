@@ -1,10 +1,10 @@
 # Round-trip kernel for bilinear disaggregation
 #
-# The round-trip kernel K is the linear operator on coarse cells representing
-# "disaggregate by bilinear, then aggregate back by block mean." Derived
-# analytically by enumerating fine-cell positions within one representative
-# coarse block and computing bilinear's weights pulling from the surrounding
-# 3x3 coarse stencil. The result depends only on the disagg factor.
+# K is the linear operator on coarse cells representing "disaggregate by
+# bilinear, then aggregate back by block mean." Derived analytically by
+# enumerating fine-cell positions within one representative coarse block
+# and computing bilinear's weights pulling from the surrounding 3x3
+# coarse stencil. Depends only on the disagg factor.
 
 .roundtrip_bilinear <- function(fact) {
       k <- as.integer(fact)
@@ -24,26 +24,52 @@
       K / (k * k)
 }
 
-# Default inverse-kernel radius: scales gently with disagg factor.
+# Default inverse-kernel radius for bilinear; scales gently with fact.
 # At fact = 5, radius = 7 gives ~1e-5 truncation error.
 .default_radius_bilinear <- function(fact) max(7L, as.integer(fact) + 2L)
 
-#' Round-trip kernel for a registered disaggregation method
+#' Round-trip kernel for a disaggregation method
 #'
-#' For prefilter methods, returns the analytical kernel that represents
+#' For prefilter methods, returns the analytical kernel representing
 #' "disagg then aggregate" as a small convolution on the coarse grid.
 #' Useful for diagnostics and for understanding the bias structure of
 #' standard interpolation.
 #'
-#' @param method Character, registered method name.
+#' @param method Character. Currently only `"bilinear"` is supported as
+#'   a prefilter method. (Pycnophylactic disaggregation is iterative and
+#'   does not have a round-trip kernel in this sense.)
 #' @param fact Integer disagg factor.
 #' @return A square odd-sized numeric matrix.
 #' @export
-ces_roundtrip_kernel <- function(method, fact) {
-      m <- .get_method(method)
-      if (is.null(m$roundtrip)) {
-            stop("Method '", method, "' is not a prefilter method and has no ",
-                 "round-trip kernel.")
-      }
-      m$roundtrip(as.integer(fact))
+roundtrip_kernel <- function(method, fact) {
+      switch(method,
+             "bilinear" = .roundtrip_bilinear(as.integer(fact)),
+             stop("Unknown prefilter method: '", method, "'. ",
+                  "Currently supported: 'bilinear'.")
+      )
+}
+
+# Default kernel radius for a given method/fact. Used by kernel() when
+# the user passes radius = NULL.
+.default_radius <- function(method, fact) {
+      switch(method,
+             "bilinear" = .default_radius_bilinear(fact),
+             stop("Unknown method: '", method, "'")
+      )
+}
+
+#' List disaggregation methods available in terraces
+#'
+#' @return A data frame with columns `name`, `type`, and `description`.
+#' @export
+list_methods <- function() {
+      data.frame(
+            name = c("bilinear", "pycnophylactic"),
+            type = c("prefilter", "iterative"),
+            description = c(
+                  "Bilinear via prefilter (disagg_bl)",
+                  "Tobler 1979 pycnophylactic, iterative (disagg_pyc)"
+            ),
+            stringsAsFactors = FALSE
+      )
 }

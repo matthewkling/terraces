@@ -1,9 +1,7 @@
-# Disaggregation functions
+# Bilinear disaggregation via prefilter
 #
-# Two-tier API:
-#   ces_disagg() - top-level dispatcher; pick method by name
-#   ces_disagg_bl() - method-specific entry point (bilinear)
-#   (planned: ces_disagg_cub, ces_disagg_pyc)
+# User-facing function: disagg_bl()
+# Power-user functions: kernel(), apply_kernel(), roundtrip_kernel()
 
 #' Bilinear disaggregation with conservation of empirical statistics
 #'
@@ -40,7 +38,7 @@
 #' versions may add an "exact" boundary mode via a small global solve.
 #'
 #' **Numerical accuracy.** Round-trip RMSE is controlled by the `tail_max`
-#' attribute of the cached kernel (see [ces_kernel()]). Default radii target
+#' attribute of the cached kernel (see [kernel()]). Default radii target
 #' ~1e-5 to ~1e-7 relative round-trip error.
 #'
 #' @references
@@ -61,23 +59,23 @@
 #' max(abs(values(coarse) - values(back_std)))   # nonzero
 #'
 #' # conservation-enforcing bilinear: empirical stats preserved
-#' fine_ces <- ces_disagg_bl(coarse, fact = 5)
-#' back_ces <- aggregate(fine_ces, fact = 5, fun = "mean")
+#' fine_aces <- disagg_bl(coarse, fact = 5)
+#' back_ces <- aggregate(fine_aces, fact = 5, fun = "mean")
 #' max(abs(values(coarse) - values(back_ces)))   # ~ machine epsilon
 #' }
 #' @export
-#' @param na_fill Boundary/NA handling mode passed to [ces_apply_kernel()].
+#' @param na_fill Boundary/NA handling mode passed to [apply_kernel()].
 #'   `"auto"` (default) selects `"reflect"` for rasters with no NAs and
 #'   `"fill"` for rasters with NAs.
-ces_disagg_bl <- function(coarse, fact, radius = NULL,
-                          max_radius_frac = 1/3,
-                          na_fill = c("auto", "reflect", "fill")) {
+disagg_bl <- function(coarse, fact, radius = NULL,
+                      max_radius_frac = 1/3,
+                      na_fill = c("auto", "reflect", "fill")) {
       na_fill <- match.arg(na_fill)
       .validate_inputs(coarse, fact, max_radius_frac)
       fact <- as.integer(fact)
 
       if (is.null(radius)) {
-            radius <- .get_method("bilinear")$default_radius(fact)
+            radius <- .default_radius("bilinear", fact)
       }
       radius <- as.integer(radius)
 
@@ -96,38 +94,17 @@ ces_disagg_bl <- function(coarse, fact, radius = NULL,
             radius <- r_max
       }
 
-      K_inv <- ces_kernel("bilinear", fact, radius)
-      ces_apply_kernel(coarse, K_inv, fact, method = "bilinear", na_fill = na_fill)
+      K_inv <- kernel("bilinear", fact, radius)
+      apply_kernel(coarse, K_inv, fact, method = "bilinear", na_fill = na_fill)
 }
 
-#' Disaggregate a raster with conservation of empirical statistics
-#'
-#' Top-level dispatcher: pick a method by name. Method-specific arguments
-#' pass through via `...`. For most uses, calling the method-specific
-#' function (e.g. [ces_disagg_bl()]) directly gives clearer signatures
-#' and per-method documentation.
-#'
-#' @param coarse SpatRaster.
-#' @param fact Integer disagg factor.
-#' @param method Character, one of the registered methods. See
-#'   [ces_list_methods()]. Default `"bilinear"`.
-#' @param ... Method-specific arguments forwarded to the chosen method's
-#'   disagg function.
-#'
-#' @return Fine SpatRaster.
-#' @export
-ces_disagg <- function(coarse, fact, method = "bilinear", ...) {
-      m <- .get_method(method)
-      m$disagg_fn(coarse, fact, ...)
-}
-
-#' Apply a precomputed inverse kernel to perform CES disaggregation
+#' Apply a precomputed inverse kernel to perform aggregation-consistent disaggregation
 #'
 #' Power-user function: skip the kernel-lookup step when disaggregating
 #' many rasters with the same geometry and method.
 #'
 #' @param coarse SpatRaster.
-#' @param K_inv Inverse kernel from [ces_kernel()].
+#' @param K_inv Inverse kernel from [kernel()].
 #' @param fact Integer disagg factor; should match the kernel.
 #' @param method Character, the prefilter method the kernel was built for.
 #' @param na_fill Character, boundary/NA handling mode. One of:
@@ -142,8 +119,8 @@ ces_disagg <- function(coarse, fact, method = "bilinear", ...) {
 #'     degrades round-trip preservation in the boundary band.
 #' @return Fine SpatRaster.
 #' @export
-ces_apply_kernel <- function(coarse, K_inv, fact, method,
-                             na_fill = c("auto", "reflect", "fill")) {
+apply_kernel <- function(coarse, K_inv, fact, method,
+                         na_fill = c("auto", "reflect", "fill")) {
       na_fill <- match.arg(na_fill)
       ka <- attributes(K_inv)
       if (!is.null(ka$fact)   && ka$fact   != as.integer(fact))
@@ -229,26 +206,4 @@ ces_apply_kernel <- function(coarse, K_inv, fact, method,
       if (!is.numeric(max_radius_frac) || max_radius_frac <= 0 ||
           max_radius_frac > 0.5)
             stop("`max_radius_frac` must be in (0, 0.5]")
-}
-
-# Register the built-in methods on package load
-.register_builtins <- function() {
-      ces_register_method(
-            name           = "bilinear",
-            type           = "prefilter",
-            disagg_fn      = ces_disagg_bl,
-            roundtrip_fn   = .roundtrip_bilinear,
-            default_radius = .default_radius_bilinear,
-            description    = "Bilinear with conservation of empirical statistics"
-      )
-      ces_register_method(
-            name        = "pycnophylactic",
-            type        = "iterative",
-            disagg_fn   = ces_disagg_pyc,
-            description = "Tobler's pycnophylactic interpolation (iterative)"
-      )
-}
-
-.onLoad <- function(libname, pkgname) {
-      .register_builtins()
 }
