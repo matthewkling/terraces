@@ -7,9 +7,10 @@
 roundtrip_kernel(method, fact)
 }
 \arguments{
-\item{method}{Character. Currently only `"bilinear"` is supported as
-a prefilter method. (Pycnophylactic disaggregation is iterative and
-does not have a round-trip kernel in this sense.)}
+\item{method}{Character. Currently `"bilinear"` (3x3 kernel) and
+`"cubic"` (5x5 kernel, Keys convention with a = -0.5) are supported
+as prefilter methods. (Pycnophylactic disaggregation is iterative
+and does not have a round-trip kernel in this sense.)}
 
 \item{fact}{Integer disagg factor.}
 }

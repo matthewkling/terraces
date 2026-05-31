@@ -8,9 +8,44 @@ test_that("bilinear round-trip kernel sums to 1 across factors", {
       }
 })
 
+test_that("cubic round-trip kernel sums to 1 across factors", {
+      for (fact in c(3L, 5L, 10L)) {
+            K <- roundtrip_kernel("cubic", fact)
+            expect_equal(sum(K), 1, tolerance = 1e-12, info = paste("fact =", fact))
+            expect_equal(rowSums(K), colSums(K), tolerance = 1e-12)
+      }
+})
+
+test_that("cubic round-trip kernel matches terra::resample empirically", {
+      # Verifies that our analytical Keys cubic kernel (a = -0.5) matches
+      # what terra::resample(method = "cubic") actually computes.
+      fact <- 5L
+      K_pred <- roundtrip_kernel("cubic", fact)
+
+      # Build empirical round-trip kernel by impulse response.
+      n_pad <- 4L
+      n <- 2L * n_pad + 1L
+      coarse <- rast(nrows = n, ncols = n, xmin = 0, xmax = n, ymin = 0, ymax = n)
+      v <- numeric(ncell(coarse))
+      v[n_pad * n + n_pad + 1L] <- 1
+      values(coarse) <- v
+
+      fine_template <- disagg(coarse, fact = fact, method = "near")
+      fine <- resample(coarse, fine_template, method = "cubic")
+      back <- aggregate(fine, fact = fact, fun = "mean")
+
+      mat <- matrix(values(back), nrow = n, byrow = TRUE)
+      center <- n_pad + 1L
+      K_emp <- mat[(center - 2L):(center + 2L), (center - 2L):(center + 2L)]
+
+      expect_lt(max(abs(K_emp - K_pred)), 1e-7)
+})
+
 test_that("inverse kernel inverts round-trip on the interior", {
       K_inv <- kernel("bilinear", fact = 5, radius = 9)
       expect_lt(attr(K_inv, "conv_max_err"), 1e-10)
+      K_inv_c <- kernel("cubic", fact = 5, radius = 9)
+      expect_lt(attr(K_inv_c, "conv_max_err"), 1e-10)
 })
 
 test_that("disagg_bl preserves block means to tol on smooth data", {
@@ -29,6 +64,22 @@ test_that("disagg_bl preserves block means to tol on smooth data", {
       # on smooth data. Larger fact and rougher data yield larger error.
       data_range <- diff(range(values(r)))
       expect_lt(max(abs(err), na.rm = TRUE), 0.01 * data_range)
+})
+
+test_that("disagg_cub preserves block means on smooth data", {
+      n <- 30; fact <- 5
+      r <- rast(nrows = n, ncols = n, xmin = 0, xmax = 1, ymin = 0, ymax = 1)
+      xy <- xyFromCell(r, 1:ncell(r))
+      values(r) <- with(as.data.frame(xy),
+                        sin(6 * x) * cos(5 * y) + 0.5 * sin(8 * x * y))
+
+      fine <- disagg_cub(r, fact = fact, radius = 9)
+      back <- aggregate(fine, fact = fact, fun = "mean")
+      err <- values(r) - values(back)
+      data_range <- diff(range(values(r)))
+      # Cubic is more diffusive than bilinear, so truncation error at the same
+      # radius is somewhat larger. Allow ~1% of data range.
+      expect_lt(max(abs(err), na.rm = TRUE), 0.02 * data_range)
 })
 
 test_that("disagg_bl preserves block means on noisy data", {
@@ -117,9 +168,10 @@ test_that("disagg_pyc preserves block means", {
       expect_lt(max(abs(err), na.rm = TRUE), 1e-3 * data_range)
 })
 
-test_that("list_methods includes both methods", {
+test_that("list_methods includes all methods", {
       m <- list_methods()
       expect_true("bilinear" %in% m$name)
+      expect_true("cubic" %in% m$name)
       expect_true("pycnophylactic" %in% m$name)
       expect_true("prefilter" %in% m$type)
       expect_true("iterative" %in% m$type)

@@ -2,6 +2,7 @@
 
 export(apply_kernel)
 export(disagg_bl)
+export(disagg_cub)
 export(disagg_pyc)
 export(kernel)
 export(list_methods)

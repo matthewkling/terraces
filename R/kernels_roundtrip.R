@@ -28,6 +28,51 @@
 # At fact = 5, radius = 7 gives ~1e-5 truncation error.
 .default_radius_bilinear <- function(fact) max(7L, as.integer(fact) + 2L)
 
+# Round-trip kernel for Keys cubic convolution disaggregation (a = -0.5).
+#
+# Keys cubic is the convention used by terra::resample(method = "cubic")
+# (verified empirically; matches impulse response to machine precision).
+# Each fine cell pulls from a 4x4 stencil of coarse cells; the round-trip
+# operator is a 5x5 kernel.
+
+.keys_cubic_1d <- function(t, a = -0.5) {
+      at <- abs(t)
+      ifelse(at < 1,
+             (a + 2) * at^3 - (a + 3) * at^2 + 1,
+             ifelse(at < 2,
+                    a * at^3 - 5 * a * at^2 + 8 * a * at - 4 * a,
+                    0))
+}
+
+.roundtrip_cubic <- function(fact) {
+      k <- as.integer(fact)
+      K <- matrix(0, 5, 5)
+      centers <- (seq_len(k) - 0.5) / k
+
+      for (u in centers) for (v in centers) {
+            # Which 4 coarse cells does cubic pull from in each axis?
+            if (u < 0.5) { ix <- c(-2, -1, 0, 1) } else { ix <- c(-1, 0, 1, 2) }
+            if (v < 0.5) { iy <- c(-2, -1, 0, 1) } else { iy <- c(-1, 0, 1, 2) }
+
+            # Distances from fine cell to each surrounding coarse cell center
+            dx <- u - (ix + 0.5); dy <- v - (iy + 0.5)
+            wx <- .keys_cubic_1d(dx); wy <- .keys_cubic_1d(dy)
+            wx <- wx / sum(wx); wy <- wy / sum(wy)   # safety renormalization
+
+            # Accumulate into the 5x5 stencil
+            for (pi in 1:4) for (pj in 1:4) {
+                  K[iy[pi] + 3L, ix[pj] + 3L] <-
+                        K[iy[pi] + 3L, ix[pj] + 3L] + wx[pj] * wy[pi]
+            }
+      }
+      K / (k * k)
+}
+
+# Cubic round-trip is more diffusive than bilinear (center weight ~0.71
+# vs 0.58) and has negative side lobes, so the inverse kernel decays more
+# slowly. Use a slightly larger default radius.
+.default_radius_cubic <- function(fact) max(9L, as.integer(fact) + 4L)
+
 #' Round-trip kernel for a disaggregation method
 #'
 #' For prefilter methods, returns the analytical kernel representing
@@ -35,17 +80,19 @@
 #' Useful for diagnostics and for understanding the bias structure of
 #' standard interpolation.
 #'
-#' @param method Character. Currently only `"bilinear"` is supported as
-#'   a prefilter method. (Pycnophylactic disaggregation is iterative and
-#'   does not have a round-trip kernel in this sense.)
+#' @param method Character. Currently `"bilinear"` (3x3 kernel) and
+#'   `"cubic"` (5x5 kernel, Keys convention with a = -0.5) are supported
+#'   as prefilter methods. (Pycnophylactic disaggregation is iterative
+#'   and does not have a round-trip kernel in this sense.)
 #' @param fact Integer disagg factor.
 #' @return A square odd-sized numeric matrix.
 #' @export
 roundtrip_kernel <- function(method, fact) {
       switch(method,
              "bilinear" = .roundtrip_bilinear(as.integer(fact)),
+             "cubic"    = .roundtrip_cubic(as.integer(fact)),
              stop("Unknown prefilter method: '", method, "'. ",
-                  "Currently supported: 'bilinear'.")
+                  "Currently supported: 'bilinear', 'cubic'.")
       )
 }
 
@@ -54,6 +101,7 @@ roundtrip_kernel <- function(method, fact) {
 .default_radius <- function(method, fact) {
       switch(method,
              "bilinear" = .default_radius_bilinear(fact),
+             "cubic"    = .default_radius_cubic(fact),
              stop("Unknown method: '", method, "'")
       )
 }
@@ -64,10 +112,11 @@ roundtrip_kernel <- function(method, fact) {
 #' @export
 list_methods <- function() {
       data.frame(
-            name = c("bilinear", "pycnophylactic"),
-            type = c("prefilter", "iterative"),
+            name = c("bilinear", "cubic", "pycnophylactic"),
+            type = c("prefilter", "prefilter", "iterative"),
             description = c(
                   "Bilinear via prefilter (disagg_bl)",
+                  "Keys cubic via prefilter (disagg_cub)",
                   "Tobler 1979 pycnophylactic, iterative (disagg_pyc)"
             ),
             stringsAsFactors = FALSE

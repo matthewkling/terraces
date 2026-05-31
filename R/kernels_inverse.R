@@ -11,7 +11,7 @@
 
 # Methods that have a prefilter (i.e., support kernel()/roundtrip_kernel()).
 # Pycnophylactic is iterative and is not in this list.
-.prefilter_methods <- c("bilinear")
+.prefilter_methods <- c("bilinear", "cubic")
 
 #' Compute the inverse kernel for a prefilter disaggregation method
 #'
