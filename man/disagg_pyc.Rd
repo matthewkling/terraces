@@ -65,13 +65,11 @@ block means equal the input coarse data exactly.
 \details{
 Compared to [disagg_bl()]:
 \itemize{
-  \item Tobler produces smoother output (continuous gradients across
-    coarse cell boundaries; no bilinear faceting).
-  \item Tobler can place extrema anywhere within blocks, not just at
-    coarse cell vertices.
+  \item Tobler produces smoother output (no kinks at cell centers,
+    where bilinear has them).
   \item Tobler is iterative and slower (~10-100x).
-  \item Tobler suppresses overshoot/ringing near sharp coarse-scale
-    gradients; the prefilter methods may amplify it.
+  \item Tobler tends to produce less ringing/overshoot near sharp
+    coarse-scale gradients than the cubic prefilter method.
 }
 }
 \references{

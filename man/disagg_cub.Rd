@@ -41,12 +41,15 @@ recovers `coarse` exactly (up to a small truncation error governed by
 \details{
 Compared to [disagg_bl()]:
 \itemize{
-  \item Cubic produces smoother output (C¹ continuity at coarse cell
-    boundaries) at modestly higher computational cost.
-  \item Cubic can place within-block extrema in cell interiors (bilinear
-    can only place them at coarse cell vertices).
+  \item Cubic produces smoother output (no kinks at cell centers, where
+    bilinear has them) at modestly higher computational cost.
   \item Cubic has negative side lobes and may overshoot input range
     near sharp gradients. For data with hard physical bounds
     (precipitation, fractional cover), this may matter.
 }
+}
+\references{
+Keys, R. G. (1981). Cubic convolution interpolation for digital
+image processing. *IEEE Trans. Acoust. Speech Signal Process.*
+29(6), 1153–1160.
 }
