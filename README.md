@@ -34,6 +34,7 @@ are all *mass-preserving* disaggregation methods.
 ### Installation
 
 ``` r
+# install.packages("pak")
 pak::pak("matthewkling/terraces")
 ```
 
@@ -151,8 +152,8 @@ iterations doesn’t remove it. For high-factor use cases, consider
 ## A visual comparison
 
 Here’s a 1D illustration of standard linear interpolation versus the
-three `terraces` methods, using `fact = 50`. The three terraces methods
-are all mass-preserving (aggregation-consistent), but differ in their
+three `terraces` methods. The three terraces methods are all
+mass-preserving (aggregation-consistent), but differ in their
 assumptions about within-block structure.
 
 <img src="man/figures/README-pressure-1.png" alt="" width="100%" />
@@ -162,9 +163,9 @@ cell values (gray bars) represent averages of a likely unknown
 fine-scale pattern (blue curve). Each of the disaggreation methods
 estimates a different fine-scale pattern (orange), which could in theory
 be compared to the truth to assess accuracy. Re-aggregating the
-fine-scale estimates to coarse-scale means (red) clearly fails to
-recover the input values for standard interpolation, but matches them
-closely for the three mass-preserving methods.
+fine-scale estimates to coarse-scale means (red) fails to recover the
+input values for standard interpolation, but matches them closely for
+the three mass-preserving methods.
 
 ## Edge effects
 
