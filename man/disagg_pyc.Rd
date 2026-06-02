@@ -7,6 +7,7 @@
 disagg_pyc(
   coarse,
   fact,
+  cascade = NULL,
   max_iter = 100L,
   tol = 1e-04,
   smoother = c("laplacian_9", "laplacian_5"),
@@ -21,18 +22,33 @@ disagg_pyc(
 
 \item{fact}{Integer disagg factor (>= 2).}
 
-\item{max_iter}{Integer, maximum iterations. Default 100.}
+\item{cascade}{Disaggregation stages. One of:
+* `NULL` (default): auto-factorize `fact` into prime factors,
+  sorted descending. For example, `fact = 48` becomes
+  `c(3, 2, 2, 2, 2)`. Each stage's per-stage disaggregation is
+  small, keeping the iteration in its comfortable regime where
+  the 3x3 smoother is comparable in bandwidth to the per-stage
+  block size. This is the recommended default.
+* `fact` (a single integer equal to `fact`): single-stage
+  disaggregation. This is the original Tobler (1979) formulation;
+  at large `fact` it converges slowly and may show within-block
+  flattening (see "Caveat" below).
+* An integer vector with `prod(cascade) == fact`: explicit
+  factorization. Useful for fine-tuning, e.g. `cascade = c(4, 4, 3)`
+  for `fact = 48`.}
+
+\item{max_iter}{Integer, maximum iterations per stage. Default 100.}
 
 \item{tol}{Numeric, convergence tolerance as a fraction of the coarse
 raster's value range. Iteration stops when the largest per-cell
-change between successive iterations falls below `tol * range(coarse)`.
+change between successive iterations falls below `tol * range`.
 Default 1e-4. Controls only how close the result is to its smooth
 fixed point; mass preservation is enforced exactly at every iteration
 regardless of convergence.}
 
 \item{smoother}{Character, smoothing kernel. One of:
 * `"laplacian_9"` (default): full 3x3 mean, including diagonals.
-* `"laplacian_5"`: 5-point stencil (cardinal neighbors + center).}
+* `"laplacian_5"`: 5-point pattern (cardinal neighbors + center).}
 
 \item{variant}{Character, mean-restoration variant. One of:
 * `"additive"` (default): add a per-block constant. Works for any data.
@@ -40,15 +56,11 @@ regardless of convergence.}
   data only; will warn and fall back to additive if any block mean
   is non-positive.}
 
-\item{init}{Character, initial fine raster before iteration begins. One of:
-* `"near"` (default): nearest-neighbor disagg of `coarse`. Each fine
-  cell starts at its parent coarse cell's value. Matches the original
-  Tobler (1979) formulation.
-* `"bilinear"`: standard bilinear disagg of `coarse`. A smoother
-  starting point that typically converges faster and produces less
-  within-block flattening at high disaggregation factors. The final
-  mass-preservation property is unchanged; only the iteration
-  trajectory and fixed point differ.}
+\item{init}{Character, initial fine raster at each stage. One of:
+* `"near"` (default): nearest-neighbor disagg. Matches the original
+  Tobler formulation.
+* `"bilinear"`: standard bilinear disagg. A smoother starting point
+  that typically converges faster.}
 
 \item{na_fill}{Character, NA handling. Same semantics as [disagg_bl()];
 `"auto"` (default) uses `"fill"` when the coarse raster has NAs,
@@ -57,20 +69,26 @@ regardless of convergence.}
 \item{verbose}{Logical, print iteration progress. Default `FALSE`.}
 }
 \value{
-Fine SpatRaster, with attributes `iterations` (number actually
-  used) and `converged` (logical).
+Fine SpatRaster, with attributes `cascade` (the stage sequence
+  actually used), `iterations` (integer vector, one per stage), and
+  `converged` (logical vector, one per stage).
 }
 \description{
 Iteratively smooths the fine raster while restoring each coarse block's
-mean at every iteration. The result is a Laplacian-smooth surface whose
-block means equal the input coarse values exactly — mass preservation
-is enforced at every iteration by construction, not approximated.
+mean at every iteration. The result is a smooth surface whose block
+means equal the input coarse values exactly — mass preservation is
+enforced at every iteration by construction, not approximated.
 }
 \details{
+For composite `fact` values, the disaggregation is cascaded through
+a sequence of smaller stages by default, which is substantially
+faster than running at the full factor in one shot and produces
+smoother results.
+
 Compared to the pre-sharpening methods ([disagg_bl()], [disagg_cub()]):
 \itemize{
-  \item Pycnophylactic produces smoother output (no kinks at cell
-    centers, where bilinear has them).
+  \item Pycnophylactic and cubic produce smoother output than bilinear
+    (no kinks at cell centers).
   \item Pycnophylactic is *exactly* mass-preserving by construction;
     the pre-sharpening methods are approximately so, with a small
     truncation error concentrated near the raster boundary. For
@@ -78,26 +96,38 @@ Compared to the pre-sharpening methods ([disagg_bl()], [disagg_cub()]):
   \item Pycnophylactic tends to produce less ringing near sharp
     coarse-scale gradients than [disagg_cub()].
   \item Pycnophylactic is iterative and substantially slower
-    (~10-50x the cost of [disagg_bl()]).
+    [disagg_bl()], though cascading is typically much faster than
+    one-shot pycno.
+}
+}
+\section{Caveat for single-stage runs}{
+
+When you explicitly set `cascade = fact` (or `fact` is prime, leaving
+no cascade options), the algorithm runs as a single pycnophylactic
+iteration. At large `fact` (> ~20 with the default 3x3 smoother), the
+single-stage fixed point can show subtle within-block flattening:
+high-frequency content within a coarse block becomes piecewise-constant
+at block scale, because the smoother cannot bridge across blocks in a
+single stage. This is a structural property of the iterative algorithm
+on regular grids, not a convergence issue — running more iterations
+doesn't remove it.
+
+The default cascade behavior mostly eliminates this issue by keeping
+each stage in a regime where the smoother's bandwidth matches the
+per-stage block size. For `fact` with a large prime factor (e.g.
+`fact = 22` = 2 x 11), the 11-stage will still exhibit the artifact;
+consider [disagg_cub()] in that case.
 }
 
-**Caveat at large disaggregation factors.** At factors much larger
-than the smoother's bandwidth (say, `fact` > ~20 with the default 3x3
-kernel), the iteration's fixed point can show subtle within-block
-flattening: high-frequency content within a coarse block becomes
-piecewise-constant at block scale, limiting how much curvature the
-method can express within a block. This is a structural property of
-the iterative algorithm on regular grids, not a convergence issue —
-running more iterations doesn't remove it. Consider [disagg_cub()]
-for high-factor use cases. Using `init = "bilinear"` can also reduce
-the effect somewhat.
-}
 \examples{
 library(terra)
-coarse <- rast(matrix(runif(900), 30, 30))
-fine_pyc <- disagg_pyc(coarse, fact = 5)
-back     <- aggregate(fine_pyc, fact = 5, fun = "mean")
-max(abs(values(coarse) - values(back)))  # ~ machine precision
+coarse <- rast(nrows = 30, ncols = 30, vals = runif(900))
+fine_pyc <- disagg_pyc(coarse, fact = 6) # cascade = c(3, 2)
+back <- aggregate(fine_pyc, fact = 6, fun = "mean")
+max(abs(values(coarse) - values(back))) # ~ tolerance level
+
+# Single-stage -- original Tobler 1979 algorithm
+fine_tobler <- disagg_pyc(coarse, fact = 6, cascade = 6)
 }
 \references{
 Tobler, W. R. (1979). Smooth pycnophylactic interpolation for
@@ -105,7 +135,6 @@ geographical regions. *J. Am. Stat. Assoc.* 74(367), 519-530.
 }
 \seealso{
 [disagg_bl()] and [disagg_cub()] for faster, non-iterative
-  pre-sharpening alternatives. The `pycno` package
-  (`pycno::pycno`) implements the polygon-source version of the
-  underlying algorithm.
+  pre-sharpening alternatives. The `pycno` package (`pycno::pycno`)
+  implements the polygon-source version of the underlying algorithm.
 }
