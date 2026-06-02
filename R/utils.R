@@ -1,103 +1,3 @@
-# Bilinear disaggregation via prefilter
-#
-# User-facing function: disagg_bl()
-# Power-user functions: kernel(), apply_kernel(), roundtrip_kernel()
-
-#' Bilinear disaggregation with conservation of empirical statistics
-#'
-#' Disaggregates `coarse` to a finer resolution by integer factor `fact`,
-#' such that aggregating the result back by block mean recovers `coarse`
-#' exactly (up to a small truncation error governed by `radius`). The fine
-#' raster is a true bilinear surface — same smoothness as standard bilinear
-#' disagg, just debiased.
-#'
-#' Internally:
-#' 1. Computes (or looks up cached) the bilinear inverse kernel for `fact`.
-#' 2. Applies the kernel as a focal pass on `coarse`, yielding an adjusted
-#'    coarse raster whose extremes are amplified to compensate for bilinear's
-#'    regression-to-the-mean bias.
-#' 3. Bilinear-disaggregates the adjusted coarse raster.
-#'
-#' @param coarse SpatRaster. Multi-layer rasters are supported (the kernel
-#'   is applied to each layer in turn).
-#' @param fact Integer disagg factor (>= 2).
-#' @param radius Integer half-width of the inverse kernel. If `NULL`, a
-#'   sensible method-specific default is used (typically 7-11). May be
-#'   automatically reduced for small rasters; see `max_radius_frac`.
-#' @param max_radius_frac Numeric. Upper bound on radius as a fraction of
-#'   the coarse raster's smaller dimension. Defaults to `1/3` to keep the
-#'   focal-boundary band (where reflective extension is approximate) from
-#'   dominating the interior. Allowed range: (0, 0.5].
-#'
-#' @return Fine SpatRaster. Layer names preserved.
-#'
-#' @details
-#' **Boundary handling.** The focal pass uses reflective extension at raster
-#' edges. Block-mean preservation is slightly approximate in a boundary band
-#' of width `radius`; for continental rasters this is invisible. Future
-#' versions may add an "exact" boundary mode via a small global solve.
-#'
-#' **Numerical accuracy.** Round-trip RMSE is controlled by the `tail_max`
-#' attribute of the cached kernel (see [kernel()]). Default radii target
-#' ~1e-5 to ~1e-7 relative round-trip error.
-#'
-#' @references
-#' Tobler, W. R. (1979). Smooth pycnophylactic interpolation for geographical
-#' regions. *J. Am. Stat. Assoc.* 74(367), 519-530.
-#'
-#' Unser, M. (1999). Splines: A perfect fit for signal and image processing.
-#' *IEEE Signal Processing Magazine* 16(6), 22-38.
-#'
-#' @examples
-#' \dontrun{
-#' library(terra)
-#' coarse <- rast(nrows = 30, ncols = 30, vals = runif(900))
-#'
-#' # standard bilinear: biased
-#' fine_std <- disagg(coarse, fact = 5, method = "bilinear")
-#' back_std <- aggregate(fine_std, fact = 5, fun = "mean")
-#' max(abs(values(coarse) - values(back_std)))   # nonzero
-#'
-#' # conservation-enforcing bilinear: empirical stats preserved
-#' fine_aces <- disagg_bl(coarse, fact = 5)
-#' back_ces <- aggregate(fine_aces, fact = 5, fun = "mean")
-#' max(abs(values(coarse) - values(back_ces)))   # ~ machine epsilon
-#' }
-#' @export
-#' @param na_fill Boundary/NA handling mode passed to [apply_kernel()].
-#'   `"auto"` (default) selects `"reflect"` for rasters with no NAs and
-#'   `"fill"` for rasters with NAs.
-disagg_bl <- function(coarse, fact, radius = NULL,
-                      max_radius_frac = 1/3,
-                      na_fill = c("auto", "reflect", "fill")) {
-      na_fill <- match.arg(na_fill)
-      .validate_inputs(coarse, fact, max_radius_frac)
-      fact <- as.integer(fact)
-
-      if (is.null(radius)) {
-            radius <- .default_radius("bilinear", fact)
-      }
-      radius <- as.integer(radius)
-
-      min_dim <- min(nrow(coarse), ncol(coarse))
-      r_hard <- (min_dim - 1L) %/% 2L
-      r_soft <- floor(max_radius_frac * min_dim)
-      r_max  <- min(r_hard, r_soft)
-      if (r_max < 2L) {
-            stop("Coarse raster too small (", nrow(coarse), " x ", ncol(coarse),
-                 ") for this method; need at least ~6 cells per side.")
-      }
-      if (radius > r_max) {
-            warning("Inverse-kernel radius reduced from ", radius, " to ", r_max,
-                    " to fit coarse raster (", nrow(coarse), " x ", ncol(coarse),
-                    "); round-trip accuracy will be lower than requested.")
-            radius <- r_max
-      }
-
-      K_inv <- kernel("bilinear", fact, radius)
-      apply_kernel(coarse, K_inv, fact, method = "bilinear", na_fill = na_fill)
-}
-
 #' Apply a precomputed inverse kernel to perform aggregation-consistent disaggregation
 #'
 #' Power-user function: skip the kernel-lookup step when disaggregating
@@ -107,6 +7,8 @@ disagg_bl <- function(coarse, fact, radius = NULL,
 #' @param K_inv Inverse kernel from [kernel()].
 #' @param fact Integer disagg factor; should match the kernel.
 #' @param method Character, the prefilter method the kernel was built for.
+#'   Determines the interpolation step: `"bilinear"` uses [terra::disagg()];
+#'   `"cubic"` uses [terra::resample()] with `method = "cubic"`.
 #' @param na_fill Character, boundary/NA handling mode. One of:
 #'   * `"auto"` (default): use `"reflect"` if `coarse` has no NA values,
 #'     otherwise use `"fill"`.
@@ -118,7 +20,8 @@ disagg_bl <- function(coarse, fact, radius = NULL,
 #'     the focal pass, then crop back. Robust to NAs, but slightly
 #'     degrades round-trip preservation in the boundary band.
 #' @return Fine SpatRaster.
-#' @export
+#' @keywords internal
+#' @noRd
 apply_kernel <- function(coarse, K_inv, fact, method,
                          na_fill = c("auto", "reflect", "fill")) {
       na_fill <- match.arg(na_fill)
@@ -146,7 +49,19 @@ apply_kernel <- function(coarse, K_inv, fact, method,
       # crop back to original coarse extent (no-op if no padding was applied)
       coarse_adj <- terra::crop(coarse_adj, terra::ext(coarse))
 
-      fine <- terra::disagg(coarse_adj, fact = fact, method = "bilinear")
+      # Dispatch interpolation step on method
+      fine <- switch(method,
+                     "bilinear" = terra::disagg(coarse_adj, fact = fact, method = "bilinear"),
+                     "cubic"    = {
+                           # terra::disagg doesn't expose cubic, so use resample to a
+                           # nested-target fine grid
+                           fine_template <- terra::disagg(coarse_adj, fact = fact,
+                                                          method = "near")
+                           terra::resample(coarse_adj, fine_template, method = "cubic")
+                     },
+                     stop("apply_kernel: unsupported method '", method, "'")
+      )
+
       names(fine) <- names(coarse)
       fine
 }

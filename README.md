@@ -7,9 +7,9 @@
 
 <!-- badges: end -->
 
-**terraces** provides disaggregation algorithms for **terra** rasters
-that implement **A**ggregation-**C**onsistent **E**stimation across
-**S**cales.
+The **terraces** R package provides disaggregation algorithms for
+**terra** rasters that implement **A**ggregation-**C**onsistent
+**E**stimation across **S**cales.
 
 Bilinear and cubic interpolation are widely used for raster
 disaggregation, via `terra::disagg(method = "bilinear")` and similar
@@ -27,7 +27,7 @@ disaggregation methods whose output, when re-aggregated, recovers the
 original coarse values. They include bilinear and cubic variants of
 *pre-sharpening* disaggregation (also known as prefiltering) as well as
 an implementation of pycnophylactic interpolation (Tobler, 1979). These
-area all *mass-preserving* disaggregation methods.
+are all *mass-preserving* disaggregation methods.
 
 ## Quick start
 
@@ -77,9 +77,15 @@ implied spatial extent:
 
 ## Which `terraces` method should I use?
 
-The package includes three disaggregation methods. All three are
-aggregation-consistent and substantially more accurate than standard
-bilinear on typical aggregated rasters.
+The package includes three disaggregation methods, all substantially
+more accurate than standard bilinear on typical aggregated rasters. They
+differ in how exactly they preserve coarse-cell means. **Pycnophylactic
+interpolation** preserves them exactly, by construction. The
+**pre-sharpening methods** are only approximately mass-preserving: they
+apply a finite-radius approximation to an ideal infinite inverse kernel,
+leaving a tiny residual error that is concentrated in cells near the
+raster boundary and can be reduced by increasing the `radius` argument.
+For typical large rasters this approximation error is negligible.
 
 ### Pre-sharpened bilinear: `disagg_bl()`
 
@@ -110,7 +116,7 @@ centers), but may overshoot near sharp gradients due to cubic’s negative
 side lobes.
 
 **How it works.** Mathematically identical to `disagg_bl()` but with a
-5×5 round-trip stencil (cubic interpolates from a 4×4 neighborhood,
+5×5 round-trip kernel (cubic interpolates from a 4×4 neighborhood,
 vs. 2×2 for bilinear). The package uses Keys cubic convolution with the
 standard parameter `a = -0.5`, matching the convention in
 `terra::resample(method = "cubic")` (verified empirically). Note that
@@ -120,12 +126,11 @@ interpolation step.
 
 ### Pycnophylactic interpolation: `disagg_pyc()`
 
-Use `disagg_pyc()` when you want maximum smoothness, or when sharp
-coarse-scale gradients risk ringing (which `disagg_cub()` may amplify).
-It implements pycnophylactic interpolation (Tobler, 1979), adapted to
-regular raster grids. The result is Laplacian-smooth (no kinks
-anywhere), iterative, slower than the pre-sharpening methods (~10-50×
-the cost of `terra::disagg()`), but more stable near sharp gradients.
+Use `disagg_pyc()` when you want maximum smoothness. It implements
+pycnophylactic interpolation (Tobler, 1979), adapted to regular raster
+grids. The result is Laplacian-smooth (no kinks anywhere) and can be
+more stable near sharp gradients than the pre-sharpening methods. But
+the algorithm is iterative and is typically much slower.
 
 **How it works.** Standard Tobler (1979) iteration on a regular grid:
 start from a nearest-neighbor or bilinear disaggregation, repeatedly
@@ -133,11 +138,21 @@ smooth the fine raster with a 3×3 Laplacian kernel, then add a per-block
 constant to restore each coarse block’s mean. Iterate until convergence
 (typically 20-100 iterations).
 
+**Caveat at large disaggregation factors.** At factors much larger than
+the smoother’s bandwidth (say, `fact` \> ~20 with the default 3×3
+kernel), the iteration’s fixed point can show subtle within-block
+flattening: high-frequency content within a coarse block becomes
+piecewise-constant at block scale, limiting how much curvature the
+method can express within a block. This is a structural property of
+Tobler’s iterative algorithm, not a convergence issue — running more
+iterations doesn’t remove it. For high-factor use cases, consider
+`disagg_cub()` instead.
+
 ## A visual comparison
 
 Here’s a 1D illustration of standard linear interpolation versus the
-three `terraces` methods. The three terraces methods are all
-mass-preserving (aggregation-consistent), but differ in their
+three `terraces` methods, using `fact = 50`. The three terraces methods
+are all mass-preserving (aggregation-consistent), but differ in their
 assumptions about within-block structure.
 
 <img src="man/figures/README-pressure-1.png" alt="" width="100%" />
@@ -147,9 +162,25 @@ cell values (gray bars) represent averages of a likely unknown
 fine-scale pattern (blue curve). Each of the disaggreation methods
 estimates a different fine-scale pattern (orange), which could in theory
 be compared to the truth to assess accuracy. Re-aggregating the
-fine-scale estimates to coarse-scale means (red) does not recover the
-input values when standard interpolation was used, but does when
-mass-preserving methods were used.
+fine-scale estimates to coarse-scale means (red) clearly fails to
+recover the input values for standard interpolation, but matches them
+closely for the three mass-preserving methods.
+
+## Edge effects
+
+Pre-sharpened disaggregation has a boundary band where mass preservation
+and smoothness are slightly degraded relative to the interior, resulting
+from the focal pass’s reflective extension and terra’s own boundary
+fallback for cubic and bilinear. For typical raster sizes this band is
+minimal, but you can inspect it with `edge_effects()`, which returns a
+fine-resolution mask of the affected zone. Use it to drop affected cells
+from results when boundary reliability matters (e.g. small rasters,
+mosaic tiling, or regions of interest near edges).
+
+Pycnophylactic disaggregation has a milder version of this issue: its
+smoother extends beyond the raster at boundaries, slightly reducing
+smoothness within ~1 coarse cell of the edge, but mass preservation
+remains exact everywhere.
 
 ## References
 
