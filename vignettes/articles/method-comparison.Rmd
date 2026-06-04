@@ -105,7 +105,7 @@ ggplot(dr, aes(x, y, fill = value)) +
       geom_raster() +
       facet_wrap(~ metric, ncol = 2) +
       scale_fill_gradientn(
-            colors = c("black", viridis::viridis(12), "orange", "red", "darkred", "black")
+            colors = c("black", scales::pal_viridis()(12), "orange", "red", "darkred", "black")
       ) +
       coord_cartesian(expand = FALSE) +
       guides(fill = guide_colorbar(barwidth = 12, barheight = .5)) +
