@@ -263,7 +263,7 @@ The coarse raster we're working with here is fairly small, so all the code above
 Let's benchmark two versions of `disagg_pyc()`: one with `fact = 32` and one with `fact = 31`. While seemingly similar, these will trigger very different behaviors in the function's routine for efficiently cascading through intermediate resolutions. 32 is a best case scenario---it's a power of 2 so it has optimal prime factorization, allowing the function to internally run six relatively fast steps each with `fact = 2`. 31 is a worst case scenario---it's a prime that can't be factorized into sub-steps, so the function has to slog through a single big optimization that requires lots of iterations for its narrow smoothing kernel to propagate information across the high-resolution raster.
 
 ```{r benchmark, fig.height = 2}
-input <- truth
+input <- crop(truth, ext(truth) * 0.5)
 
 speed <- function(expression) as.vector(system.time(expression)["elapsed"])
 
