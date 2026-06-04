@@ -18,11 +18,11 @@ knitr::opts_chunk$set(
 <!-- badges: start -->
 <!-- badges: end -->
 
-The **terraces** R package provides disaggregation algorithms for **terra** rasters that implement **A**ggregation-**C**onsistent **E**stimation across **S**cales.
+The **terraces** R package extends raster disaggregation methods from **terra** to provide **A**ggregation-**C**onsistent **Es**timation algorithms.
 
-Bilinear and cubic interpolation are widely used for raster disaggregation, via `terra::disagg(method = "bilinear")` and similar functions in other packages. But when your raster values conceptually represent averages of finer-scale variation within each cell — perhaps the most common case — these interpolation methods are inappropriate. Their use for disaggregation implicitly assumes that raster values represent point samples at grid cell centers; when used to disaggregate mean-based rasters, they produce fine-scale results that are biased toward the mean and cannot be re-aggregated to recover the original coarse values.
+When we disaggregate a coarse raster, there are typically two things we want from the fine-scale result: that it be consistent with the coarse raster (re-aggregating it recovers the input), and that it be consistent with the true fine-scale pattern underlying the coarse raster (continuous, with smooth local variation). Standard disaggregation methods sacrifice one goal or the other. `terraces` methods satisfy both.
 
-`terraces` provides three aggregation-consistent (mass-preserving) disaggregation methods whose output, when re-aggregated, recovers the original coarse values. They include bilinear and cubic variants of *pre-sharpening* disaggregation (also known as prefiltering) as well as an implementation of pycnophylactic interpolation (Tobler, 1979). These are all *mass-preserving* disaggregation methods.
+`terraces` provides three aggregation-consistent (mass-preserving) disaggregation methods whose output, when re-aggregated, recovers the original coarse values. They include bilinear and cubic variants of *pre-sharpening* disaggregation (also known as prefiltering) as well as an implementation of *pycnophylactic* interpolation (Tobler, 1979).
 
 
 ## Quick start
@@ -54,6 +54,8 @@ fine_pyc <- disagg_pyc(coarse, fact = 5)
 
 ## When should I (not) use `terraces`?
 
+Standard interpolation methods (`terra::disagg(method = "bilinear")` and similar functions in other packages) implicitly assume that raster values are point samples at cell centers. The terraces methods, by contrast, treat them as averages over each cell's area. Choose based on what your data represent.
+
 **Use `terraces`** when cell values represent averages over the area of the cell. This is the typical case for most raster products:
 
 - Coarsened DEMs (LiDAR aggregated to coarser resolution)
@@ -62,7 +64,7 @@ fine_pyc <- disagg_pyc(coarse, fact = 5)
 - Gridded population counts and density rasters
 - Any raster produced by `terra::aggregate(fun = "mean")` or equivalent
 
-**Use standard bilinear disaggregation** in the less common case where cell values represent point measurements at cell centers, with no implied spatial extent:
+**Use standard bilinear disaggregation** in the less common case where cell values represent point measurements at cell centers, with no implied spatial extent. (Bilinear is the conventional choice for this case, though it can't recover extremes that fall between sample points.)
 
 - Surfaces interpolated from sparse point data (kriging, IDW, splines)
 - Point-based model output at grid cell centers
@@ -73,7 +75,9 @@ fine_pyc <- disagg_pyc(coarse, fact = 5)
 
 ## Which `terraces` method should I use?
 
-The package includes three disaggregation methods, all substantially more accurate than standard bilinear on typical aggregated rasters. They differ in how exactly they preserve coarse-cell means. **Pycnophylactic interpolation** preserves them exactly, by construction. The **pre-sharpening methods** are only approximately mass-preserving: they apply a finite-radius approximation to an ideal infinite inverse kernel, leaving a tiny residual error that is concentrated in cells near the raster boundary and can be reduced by increasing the `radius` argument. For typical large rasters this approximation error is negligible.
+The package includes three disaggregation methods, all substantially more accurate than standard bilinear on typical aggregated rasters. They differ in how exactly they preserve coarse-cell means. **Pycnophylactic interpolation** preserves them exactly, by construction. The **pre-sharpening methods** are almost exactly mass-preserving, but do contain tiny residual error resulting from using a finite-radius approximation of an ideal infinite inverse kernel.
+
+The methods are explained below, and
 
 
 ### Pre-sharpened bilinear: `disagg_bl()`
@@ -91,13 +95,10 @@ Use `disagg_cub()` for smoother output, when bilinear's piecewise structure is v
  
  
 ### Pycnophylactic interpolation: `disagg_pyc()`
- 
-Use `disagg_pyc()` when you want maximum smoothness. It implements pycnophylactic interpolation (Tobler, 1979), adapted to regular raster grids. The result is Laplacian-smooth (no kinks anywhere) and can be more stable near sharp gradients than the pre-sharpening methods. But the algorithm is iterative and is typically much slower.
- 
-**How it works.** Standard Tobler (1979) iteration on a regular grid: start from a nearest-neighbor or bilinear disaggregation, repeatedly smooth the fine raster with a 3×3 Laplacian kernel, then add a per-block constant to restore each coarse block's mean. Iterate until convergence (typically 20-100 iterations).
 
-**Caveat at large disaggregation factors.** At factors much larger than the smoother's bandwidth (say, `fact` > ~20 with the default 3×3 kernel), the iteration's fixed point can show subtle within-block flattening: high-frequency content within a coarse block becomes piecewise-constant at block scale, limiting how much curvature the method can express within a block. This is a structural property of Tobler's iterative algorithm, not a convergence issue — running more iterations doesn't remove it. For high-factor use cases, consider `disagg_cub()` instead.
+Use `disagg_pyc()` when you want maximum smoothness. It implements pycnophylactic interpolation (Tobler, 1979), adapted to regular raster grids. The result is Laplacian-smooth (no kinks anywhere) and can be more stable near sharp gradients than the pre-sharpening methods. The algorithm is iterative and is typically substantially slower than the pre-sharpening methods for large rasters.
 
+**How it works.** Standard Tobler (1979) iteration on a regular grid: start from a nearest-neighbor or bilinear disaggregation, repeatedly smooth the fine raster with a 3×3 Laplacian kernel, then add a per-block constant to restore each coarse block's mean. Iterate until convergence. By default, this iteration is cascaded through a sequence of smaller stages — for example, disaggregating by `fact = 12` runs as three sub-disaggregations at factors 3, 2, 2. When `fact` is large, cascading is much faster than running a single iteration at the full `fact` and can give smoother results.
 
 
 ## A visual comparison

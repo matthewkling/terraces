@@ -5,3 +5,5 @@
 .DS_Store
 .quarto
 terraces.Rproj
+inst/doc
+docs
