@@ -95,14 +95,14 @@ transect to visualize the shapes of the fitted disaggregation functions.
 
 dr <- as.data.frame(r, xy = TRUE) |>
       pivot_longer(-c(x, y), names_to = "metric", values_to = "value") |>
-      mutate(metric = factor(metric, levels = method_levels, labels = method_labels))
+      mutate(metric = factor(metric, levels = method_levels, 
+                             labels = method_labels))
 
 ggplot(dr, aes(x, y, fill = value)) +
       geom_raster() +
       facet_wrap(~ metric, ncol = 2) +
-      scale_fill_gradientn(
-            colors = c("black", scales::pal_viridis()(12), "orange", "red", "darkred", "black")
-      ) +
+      scale_fill_gradientn(colors = c("black", scales::pal_viridis()(12), 
+                                      "orange", "red", "darkred", "black")) +
       coord_cartesian(expand = FALSE) +
       guides(fill = guide_colorbar(barwidth = 12, barheight = .5)) +
       theme(axis.title = element_blank(),
@@ -112,7 +112,10 @@ ggplot(dr, aes(x, y, fill = value)) +
       labs(fill = "Elevation (m) ")
 ```
 
-![](method-comparison_files/figure-html/2d-maps-1.png)
+![plot of chunk
+2d-maps](method-comparison_files/figure-html/2d-maps-1.png)
+
+plot of chunk 2d-maps
 
 The first row shows the true high-res DEM and the coarse aggregated
 raster (visually identical to nearest-neighbor disaggregation), while
@@ -169,7 +172,10 @@ ggplot(transect, aes(y, value, color = metric)) +
       labs(x = "Latitude (deg)", y = "Elevation (m)", color = NULL)
 ```
 
-![](method-comparison_files/figure-html/transect-1.png)
+![plot of chunk
+transect](method-comparison_files/figure-html/transect-1.png)
+
+plot of chunk transect
 
 The original ground truth (black) and the coarse-cell aggregated
 staircase (gray) show our input data. Standard bilinear (red) passes
@@ -206,7 +212,10 @@ ee <- edge_effects(coarse, fact, method = "cubic")
 plot(ee, main = "Edge-effect zone (cubic method)")
 ```
 
-![](method-comparison_files/figure-html/edge-effects-1.png)
+![plot of chunk
+edge-effects](method-comparison_files/figure-html/edge-effects-1.png)
+
+plot of chunk edge-effects
 
 Values of 1 indicate cells within the pre-sharpening kernel radius where
 the focal pass uses reflective padding; values of 2 indicate cells that
@@ -312,7 +321,10 @@ ggplot(da, aes(x, y, fill = estimate - truth)) +
             legend.position = "top")
 ```
 
-![](method-comparison_files/figure-html/residuals-1.png)
+![plot of chunk
+residuals](method-comparison_files/figure-html/residuals-1.png)
+
+plot of chunk residuals
 
 This shows us several things:
 
@@ -384,8 +396,7 @@ code above ran quite quickly. But for a larger raster, compute speed can
 become an issue that affects your choice of method. Let’s do a quick
 benchmark here comparing these same four methods on speed. Instead of
 using the coarse raster as input here, as it’s unrealistically small,
-we’ll use an input raster with an intermediate resolution between the
-“truth” and “coarse” grids.
+we’ll further disaggregate a section of the “truth” raster.
 
 Let’s benchmark two versions of
 [`disagg_pyc()`](https://matthewkling.github.io/terraces/reference/disagg_pyc.md):
@@ -402,12 +413,12 @@ raster.
 
 ``` r
 
-input <- crop(truth, ext(truth) * 0.5)
+input <- crop(truth, ext(truth) * 0.75)
 
 speed <- function(expression) as.vector(system.time(expression)["elapsed"])
 
 times <- c(
-      bilinear = speed(disagg(input, 32, method = "bilinear")),
+      standard_bilinear = speed(terra::disagg(input, 32, method = "bilinear")),
       disagg_bl = speed(disagg_bl(input, 32)),
       disagg_cub = speed(disagg_cub(input, 32)),
       disagg_pyc_32 = speed(disagg_pyc(input, 32)),
@@ -426,7 +437,10 @@ ggplot(times, aes(seconds, method, label = signif(seconds, 2))) +
       labs(x = "compute time (s)", y = NULL)
 ```
 
-![](method-comparison_files/figure-html/benchmark-1.png)
+![plot of chunk
+benchmark](method-comparison_files/figure-html/benchmark-1.png)
+
+plot of chunk benchmark
 
 These results are specific to the particular scales of this example, but
 their rank order should hold across most situations, and they give a
@@ -434,11 +448,13 @@ reasonable sense for the relative speed of these functions. The two
 pre-sharpening methods run in the same order of magnitude as standard
 bilinear, because they only add a single cheap pre-filter pass on the
 coarse input raster; cubic is slower than bilinear mainly because its
-interpolation kernel is a bit wider. The pycnophylactic methods are
-substantially slower because they are iterative convergence algorithms
-rather than deterministic one-pass solutions. The two pycno timings
-illustrate the sensitivity of this algorithm to the exact value of
-`fact`; if your raster is large and you have flexibility over `fact`,
+interpolation kernel is a bit wider.
+
+The pycnophylactic methods are substantially slower because they are
+iterative convergence algorithms rather than deterministic one-pass
+solutions. The two pycno timings illustrate the sensitivity of this
+algorithm to the exact value of `fact`. If you’re using pycno with a
+large raster and a large `fact`, and you have flexibility over `fact`,
 choosing composite values with lots of small prime factors can
 dramatically increase speed.
 
